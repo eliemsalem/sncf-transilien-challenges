@@ -1,0 +1,8 @@
+# Données des challenges : propriété des organisateurs, accessibles aux seuls inscrits
+*/data/
+# Fichiers de soumission générés
+submission*.csv
+# Article de référence (droits d'auteur) : voir le lien dans le README
+*.pdf
+__pycache__/
+*.joblib
