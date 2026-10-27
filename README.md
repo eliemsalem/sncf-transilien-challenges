@@ -8,7 +8,7 @@ the [Challenge Data](https://challengedata.ens.fr) platform:
   63.16**, which is **1st** on the public leaderboard.
 - **n°166: platform waiting time.** Forecast, in real time, the error of the waiting
   time displayed on platform screens for a train two stations upstream (MAE). The public
-  score went from **0.6497 to 0.6264**, which is **2nd** on the public leaderboard.
+  score went from **0.6497 to 0.6260**, which is **2nd** on the public leaderboard.
 
 Leaderboard positions as of 27 October 2026.
 
@@ -100,8 +100,8 @@ LightGBM ensemble, removing counting outages, a COVID flag, lag features.
 | v1 | XGBoost classifier → median | 0.678 | 0.6497 |
 | v2 | + neural network, day context | 0.668 | 0.6407 |
 | v3 | + service pattern | 0.661 | 0.6299 |
-| v4 | + calendar, train context, ensemble of 33 models | not measured as a whole* | **0.6264** |
-| v5 | + position of the train within its day, 60% weight on XGBoost | 0.6559 (XGBoost + 3 networks) | not scored yet |
+| v4 | + calendar, train context, ensemble of 33 models | not measured as a whole* | 0.6264 |
+| v5 | + position of the train within its day, 60% weight on XGBoost | 0.6559 (XGBoost + 3 networks) | **0.6260** |
 
 \* The components of v4 score 0.6599-0.6604 in validation. The full ensemble was not
 re-validated before submission.
@@ -192,7 +192,8 @@ python 166_temps_attente/train_predict.py       # ~35 min on a GPU, writes 166_t
   part of the test set and may rank differently.
 - **166 is not bit-for-bit reproducible.** The neural networks run on a GPU, so a rerun
   can differ from the submitted file on a few rows.
-- **166: the script produces v5**, which has not been scored yet. v4 (0.6264) has no
-  position feature and gives the two halves of the ensemble equal weight.
+- **166: the script produces v5** (0.6260). The gain over v4 (0.6264) is small: the
+  validation predicted about 0.622, so the position feature helped less on the test
+  period than on the validation period.
 - **149: the script reproduces v7** (63.16) exactly. v6 (63.84) differs only on strike
   days: `STRIKE_SHRINK = 5` and `STRIKE_EXTRA = 1.0`.
