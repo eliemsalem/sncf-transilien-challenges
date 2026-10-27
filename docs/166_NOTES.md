@@ -52,7 +52,8 @@ like the test set.
 | + neural network + day context (v2) | 0.668 | 0.6407 (8th) |
 | + service pattern (v3) | 0.661 | 0.6299 (3rd) |
 | + calendar, train context, large ensemble of 33 models (v4) | not measured as a whole (components: 0.6599-0.6604) | 0.6264 (2nd) |
-| + position of the train within its day, 60% XGBoost (v5) | 0.6559 (XGBoost + 3 networks) | **0.6260 (2nd)** |
+| + position of the train within its day, 60% XGBoost (v5) | 0.6559 (XGBoost + 3 networks) | 0.6260 (2nd) |
+| + local context: trains just before and after at the same station (v6) | **0.6355** | **0.6050** |
 
 **Service pattern**: for each row, the stations served by the same train at the other
 test stops (12, 18, 24, 30). This is timetable information, in the spirit of the
@@ -72,6 +73,20 @@ way. The row order does not leak the target: p2q0 of the next rows never copies 
 chance. With 3 seeds, XGBoost improves from 0.6652 to 0.6591 (Oct.-Nov.). On the public
 leaderboard the gain is much smaller (0.6264 → 0.6260, whereas the validation predicted
 0.622-0.623): the time-of-day proxy transfers poorly to Nov.-Dec.
+
+**Local context (v6, grey area)**: for each row, the mean `p0q2`, `p0q3`, |`p0q2`| and
+`p2q0` of the 1, 3 and 8 trains just before and just after at the same station and day
+(ordered by `pos_day`, at test density), plus the time gaps to the nearest ones. Found by
+an error breakdown of v5: within a station-day, y is correlated with the y of the next
+train (0.28). Leak check: `p2q0` of the following trains equals y no more often than
+chance (27.4% vs 27.4%). Single XGBoost, 2 seeds: 0.6647 → 0.6470 with `p0q2`/|`p0q2`|
+only, 0.6392 with all four measurements. Full ensemble: 0.6355 in validation, 0.6050 public
+(ratio 0.952, in line with earlier versions).
+
+**Error breakdown of v5 (validation)**: rows at ≤ -6 min are 0.8% of the rows and 17% of
+the error; station ZFB is 8% of the rows and 16% of the error, with a MAE (1.28) barely
+below predicting 0 (1.33); 10 Nov. alone is 11% of the error; trains seen at a single
+test stop (no train context) have a MAE of 0.88 against 0.64.
 
 **Remaining error**: rows at ≤ -5 min (incidents, 1.2%) account for about 20% of the MAE,
 with an average error of about 11 minutes. Widening the classes down to -10 did not help:

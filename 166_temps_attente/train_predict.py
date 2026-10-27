@@ -4,7 +4,7 @@
 SNCF-Transilien challenge n°166 — real-time forecasting of platform waiting time.
 
 Target p0q0: difference (whole minutes) between the theoretical and the actual waiting
-time, for a train located two stations upstream. Metric: MAE. Public score: 0.6264 (2nd).
+time, for a train located two stations upstream. Metric: MAE. Public score: 0.6050 (v6).
 
 Approach: each model predicts the DISTRIBUTION of p0q0 over -5..+5 minutes; the
 distributions are averaged and we predict their MEDIAN (the value that minimises the
@@ -22,6 +22,8 @@ Features, beyond the 6 past measurements p{i}q{j}:
   - calendar: school holidays (zone C), public holidays, bridge days, eves of holidays;
   - position of the train within its day, from the order of the rows in the files: a
     proxy for the time of day (grey area: it relies on how the files were sorted);
+  - local context (grey area): measurements of the trains just before and just after at
+    the same station and day;
   - day context (grey area, see docs/166_NOTES.md): averages of the measurements over
     the station-day and over the day; train context: averages over the train's other stops.
 Contexts are computed "at test density": on the training set, only from the rows at the
@@ -57,6 +59,8 @@ MISSION_ARRETS = (12, 18, 24, 30)
 MISSION = [f"m{a}" for a in MISSION_ARRETS]
 CALENDAR = ["school_holiday", "public_holiday", "bridge_day", "holiday_eve"]
 POSITION = ["pos_day"]
+LOCAL_COLS, LOCAL_K = ["p0q2", "p0q3", "absq", "p2q0"], (1, 3, 8)
+LOCAL = [f"l{s}{k}_{c}" for c in LOCAL_COLS for k in LOCAL_K for s in "ba"] + ["gap_b", "gap_a"]
 XGB_WEIGHT = 0.6                   # weight of the XGBoost half of the ensemble
 LO, HI = -5, 5
 CLASSES = np.arange(LO, HI + 1)
@@ -180,8 +184,40 @@ def add_train_context(df, is_test, seed=0):
     return df
 
 
+def add_local_context(df, is_test, seed=0):
+    """Local context (grey area, like the day context): mean measurements of the k trains just
+    before (lb) and just after (la) at the same station and day, ordered by pos_day, and the
+    gaps to the nearest ones."""
+    src = context_rows(df, is_test, seed)
+    src = src.assign(absq=src.p0q2.abs())
+    keys = pd.MultiIndex.from_arrays([df.gare.astype(str), df.date])
+    group = dict(zip(keys, pd.factorize(keys)[0]))
+    g = pd.factorize(keys)[0]
+    sg = np.array([group[k] for k in zip(src.gare.astype(str), src.date)])
+    order = np.argsort(sg * 10.0 + src.pos_day.values, kind="stable")    # pos_day < 10
+    skey, sg = (sg * 10.0 + src.pos_day.values)[order], sg[order]
+    key = g * 10.0 + df.pos_day.values
+    lo, hi = np.searchsorted(skey, key, "left"), np.searchsorted(skey, key, "right")   # own row excluded
+    start, end = np.searchsorted(sg, g, "left"), np.searchsorted(sg, g, "right")
+    out = {}
+    for c in LOCAL_COLS:
+        v = src[c].values[order].astype(float)
+        ok = ~np.isnan(v)
+        cs, cn = np.r_[0, np.cumsum(np.where(ok, v, 0))], np.r_[0, np.cumsum(ok)]
+        for k in LOCAL_K:
+            for s, a, b in (("b", np.maximum(lo - k, start), lo), ("a", hi, np.minimum(hi + k, end))):
+                n = cn[b] - cn[a]
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    out[f"l{s}{k}_{c}"] = np.where(n > 0, (cs[b] - cs[a]) / n, np.nan)
+    pos = np.r_[src.pos_day.values[order], np.nan]
+    out["gap_b"] = np.where(lo > start, df.pos_day.values - pos[np.maximum(lo - 1, 0)], np.nan)
+    out["gap_a"] = np.where(hi < end, pos[np.minimum(hi, len(pos) - 1)] - df.pos_day.values, np.nan)
+    return df.assign(**out)
+
+
 def enrich(df, is_test):
-    return add_calendar(add_train_context(add_mission(add_context(df, is_test), is_test), is_test))
+    df = add_train_context(add_mission(add_context(df, is_test), is_test), is_test)
+    return add_calendar(add_local_context(df, is_test))
 
 
 def recency_weight(dates, ref):
@@ -266,11 +302,11 @@ def nn_proba(tr, te, num, ref, seeds, epochs=12, lr=2e-3, bs=4096):
 
 # ---------------------------------------------------------------- ensemble
 def ensemble_proba(tr, te, ref):
-    feats = FEATURES + CTX + MISSION + CALENDAR + POSITION
+    feats = FEATURES + CTX + MISSION + CALENDAR + POSITION + LOCAL
     xgb = [xgb_proba(tr, te, feats, ref, seeds, **kw) for kw, seeds in XGB_VARIANTS]
     xgb.append(xgb_proba(tr, te, feats + TRAIN_CTX, ref, (0, 1, 2)))
     print(f"  XGBoost: {len(xgb)} variants", flush=True)
-    num = [f for f in FEATURES if f not in ("gare", "arret", "wd")] + CALENDAR + POSITION
+    num = [f for f in FEATURES if f not in ("gare", "arret", "wd")] + CALENDAR + POSITION + LOCAL
     nets = [nn_proba(tr, te, num, ref, (0, 1, 2)), nn_proba(tr, te, num, ref, (3, 4, 5)),
             nn_proba(tr, te, num + CTX, ref, (0, 1, 2)), nn_proba(tr, te, num + CTX + TRAIN_CTX, ref, (0, 1, 2))]
     print(f"  networks: {len(nets)} variants", flush=True)

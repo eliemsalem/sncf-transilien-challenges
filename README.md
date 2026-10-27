@@ -8,7 +8,7 @@ the [Challenge Data](https://challengedata.ens.fr) platform:
   63.16**, which is **1st** on the public leaderboard.
 - **n°166: platform waiting time.** Forecast, in real time, the error of the waiting
   time displayed on platform screens for a train two stations upstream (MAE). The public
-  score went from **0.6497 to 0.6260**, which is **2nd** on the public leaderboard.
+  score went from **0.6497 to 0.6050**, which is **2nd** on the public leaderboard.
 
 Leaderboard positions as of 27 October 2026.
 
@@ -67,6 +67,8 @@ The same method was used for both challenges:
   - the **calendar**: school holidays, bridge days, eves of holidays;
   - the **day and train contexts**: averages of the measurements over the station-day
     and over the train's other stops;
+  - the **local context**: the measurements of the 1, 3 and 8 trains just before and
+    just after at the same station and day, and the time gaps to the nearest ones;
   - the **position of the train within its day**, taken from the order of the rows in the
     files (trains appear in roughly chronological order). It is a proxy for the time of
     day, which the data does not provide.
@@ -101,7 +103,8 @@ LightGBM ensemble, removing counting outages, a COVID flag, lag features.
 | v2 | + neural network, day context | 0.668 | 0.6407 |
 | v3 | + service pattern | 0.661 | 0.6299 |
 | v4 | + calendar, train context, ensemble of 33 models | not measured as a whole* | 0.6264 |
-| v5 | + position of the train within its day, 60% weight on XGBoost | 0.6559 (XGBoost + 3 networks) | **0.6260** |
+| v5 | + position of the train within its day, 60% weight on XGBoost | 0.6559 (XGBoost + 3 networks) | 0.6260 |
+| v6 | + local context: trains just before and after at the same station | 0.6355 | **0.6050** |
 
 \* The components of v4 score 0.6599-0.6604 in validation. The full ensemble was not
 re-validated before submission.
@@ -138,7 +141,7 @@ after the model, per station.
 | Closure history of the station (`cl_*`) | 16% |
 | Recent level of the station | 4% |
 
-**Challenge 166, XGBoost (main variant)**
+**Challenge 166, XGBoost (main variant of v5)**
 
 | Family | Share |
 |---|---|
@@ -155,6 +158,29 @@ Taken one by one, the most important features after the station are the stop num
 the stations served at stops 18 and 24, the position of the train within its day and the
 train context of `p2q0`. The 6 raw past delays have a small share because their
 combinations carry the same information in a more usable form.
+
+**Challenge 166, permutation importance across versions.** Increase of the validation MAE
+when one family of features is shuffled (one XGBoost per version, then the v5 network and
+the v5 blend). Gain-based shares overrate high-cardinality features such as the station;
+permutation does not.
+
+| Family | v1 | v2 | v3 | v4 | v5 | v5 network | v5 blend |
+|---|---|---|---|---|---|---|---|
+| Station | 0.326 | 0.211 | 0.206 | 0.201 | 0.204 | 0.184 | 0.181 |
+| Past delays and combinations | 0.177 | 0.120 | 0.091 | 0.087 | 0.086 | 0.118 | 0.094 |
+| Day context | | 0.040 | 0.032 | 0.042 | 0.035 | 0.088 | 0.051 |
+| Service pattern | | | 0.036 | 0.037 | 0.031 | 0.016 | 0.018 |
+| Position in the day | | | | | 0.008 | 0.004 | 0.005 |
+| Train context | | | | 0.005 | 0.004 | 0.006 | 0.001 |
+| Calendar, weekday | ≈0 | ≈0 | ≈0 | ≈0 | ≈0 | ≈0 | ≈0 |
+
+Each new family takes over part of the weight of the past delays, and the stop number
+becomes almost useless (0.040 → 0.003) once the service pattern is known. The networks
+rely twice as much on the day context as XGBoost does, which is why blending them helps.
+The error breakdown of v5 pointed to the next step: within a station and a day, the
+error of a train is correlated with that of the trains just before and after (0.28),
+which the day-wide averages missed. This local context (v6) brought the largest gain
+since v2.
 
 ## Repository layout
 
@@ -182,7 +208,7 @@ python 166_temps_attente/train_predict.py       # ~35 min on a GPU, writes 166_t
   time. The platform rules allow enriching the data, but the spirit of the task is
   debatable:
   - the 2023 strike calendar (149) was only known afterwards;
-  - the day and train contexts (166) include trains that ran later the same day;
+  - the day, train and local contexts (166) include trains that ran later the same day;
   - the position of the train within its day (166) relies on how the organisers sorted
     the files, not on a provided variable.
 - **Strike effects are not validated locally.** The 2022 validation period has no
@@ -192,8 +218,8 @@ python 166_temps_attente/train_predict.py       # ~35 min on a GPU, writes 166_t
   part of the test set and may rank differently.
 - **166 is not bit-for-bit reproducible.** The neural networks run on a GPU, so a rerun
   can differ from the submitted file on a few rows.
-- **166: the script produces v5** (0.6260). The gain over v4 (0.6264) is small: the
-  validation predicted about 0.622, so the position feature helped less on the test
-  period than on the validation period.
+- **166: the script produces v6** (0.6050). The gain of v5 over v4 was small (0.6264 →
+  0.6260, whereas the validation predicted about 0.622): the position feature helped
+  less on the test period than on the validation period.
 - **149: the script reproduces v7** (63.16) exactly. v6 (63.84) differs only on strike
   days: `STRIKE_SHRINK = 5` and `STRIKE_EXTRA = 1.0`.
