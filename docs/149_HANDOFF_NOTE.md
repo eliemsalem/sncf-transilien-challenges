@@ -1,7 +1,7 @@
 # Handoff note — challenge n°149 (validations per station)
 
 Lab notebook of the project: what was tried, in what order, and why.
-Latest update: 2026-10-26.
+Latest update: 2026-10-27.
 
 ## Goal
 
@@ -32,8 +32,8 @@ python 149_validations_gares/train_predict.py
 | v3 | two stages (level + P(closure)), prediction minimising the expected MAPE | 0.66 | 79.43 |
 | v4 | level anchored on Q4 of the previous year, trained on non-COVID years | 0.62 (one lucky seed; 0.635 over 3 seeds) | not submitted |
 | v5 | + bridge days, 2023 strikes (uniform multiplier), 3 seeds | 0.607 | 69.22 |
-| v6 | + per-station strike effect, higher uncertainty on strike days, 30 strike days, anchor per weekday | 0.6035 | **63.84 (1st)** |
-| v7 | per-station strike effect shrunk less (2 days), extra ×0.85 on strike days | 0.6035 (identical outside strike days) | not submitted yet |
+| v6 | + per-station strike effect, higher uncertainty on strike days, 30 strike days, anchor per weekday | 0.6035 | 63.84 (1st) |
+| v7 | per-station strike effect shrunk less (2 days), extra ×0.85 on strike days | 0.6035 (identical outside strike days) | **63.16 (1st)** |
 
 - The trend-based level model of v3 under-estimated 2022 by 27% (COVID in the trend).
   With the anchor, the bias drops to 3% and the level MAPE from 0.31 to 0.23.

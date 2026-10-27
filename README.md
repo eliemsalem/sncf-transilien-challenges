@@ -5,12 +5,12 @@ the [Challenge Data](https://challengedata.ens.fr) platform:
 
 - **n°149: station footfall.** Forecast the number of ticket validations per day for 439
   stations over the first half of 2023 (MAPE). The public score went from **141.33 to
-  63.84**, which is **1st** on the public leaderboard.
+  63.16**, which is **1st** on the public leaderboard.
 - **n°166: platform waiting time.** Forecast, in real time, the error of the waiting
   time displayed on platform screens for a train two stations upstream (MAE). The public
   score went from **0.6497 to 0.6264**, which is **2nd** on the public leaderboard.
 
-Leaderboard positions as of 26 October 2026.
+Leaderboard positions as of 27 October 2026.
 
 ## Data
 
@@ -66,9 +66,13 @@ The same method was used for both challenges:
     i.e. timetable information;
   - the **calendar**: school holidays, bridge days, eves of holidays;
   - the **day and train contexts**: averages of the measurements over the station-day
-    and over the train's other stops.
+    and over the train's other stops;
+  - the **position of the train within its day**, taken from the order of the rows in the
+    files (trains appear in roughly chronological order). It is a proxy for the time of
+    day, which the data does not provide.
 - **Models.** 21 multiclass XGBoost models and 12 neural networks with embeddings. Their
-  predicted distributions over -5..+5 minutes are averaged, and the median is kept.
+  predicted distributions over -5..+5 minutes are averaged (60% XGBoost, 40% networks),
+  and the median is kept.
 
 ## Results
 
@@ -79,7 +83,8 @@ The same method was used for both challenges:
 | v1 | XGBoost on log(1+y), time trend | 1.20 | 141.33 |
 | v3 | two stages + "expected MAPE" decision | 0.66 | 79.43 |
 | v5 | + bridge days, 2023 strikes (uniform), 3 seeds | 0.607 | 69.22 |
-| v6 | + per-station strike effect, anchor per weekday | 0.6035 | **63.84** |
+| v6 | + per-station strike effect, anchor per weekday | 0.6035 | 63.84 |
+| v7 | stronger strike-day reduction (×0.85, less shrinkage) | 0.6035 | **63.16** |
 
 Validation scores are on the 0-1 scale; the platform reports MAPE × 100.
 
@@ -96,6 +101,7 @@ LightGBM ensemble, removing counting outages, a COVID flag, lag features.
 | v2 | + neural network, day context | 0.668 | 0.6407 |
 | v3 | + service pattern | 0.661 | 0.6299 |
 | v4 | + calendar, train context, ensemble of 33 models | not measured as a whole* | **0.6264** |
+| v5 | + position of the train within its day, 60% weight on XGBoost | 0.6559 (XGBoost + 3 networks) | not scored yet |
 
 \* The components of v4 score 0.6599-0.6604 in validation. The full ensemble was not
 re-validated before submission.
@@ -103,6 +109,52 @@ re-validated before submission.
 Did not help: historical medians per station × stop and per service pattern, context of
 upstream and neighbouring stations, pseudo-labelling, classes widened to -10, CatBoost,
 ExtraTrees, LightGBM.
+
+## What drives the models
+
+Share of the total gain of the XGBoost models (`total_gain`), grouped by family. These
+models were trained on the full training set. For high-cardinality categorical features
+(439 stations for 149, 84 for 166), XGBoost tends to over-state the importance, so read
+the station share as an upper bound.
+
+**Challenge 149, normal-level model**
+
+| Family | Share |
+|---|---|
+| Calendar: public and school holidays, day of year, weekday, bridge days | 51% |
+| Station identity (`station`) | 31% |
+| Recent level of the station: Q4 anchors and `lvl_q4` | 18% |
+
+The anchor is also the offset of the target (log(1+y) − anchor), so the recent level
+matters more than its 18% suggests. Strike effects are not features: they are applied
+after the model, per station.
+
+**Challenge 149, closure classifier**
+
+| Family | Share |
+|---|---|
+| Calendar: weekday vs weekend, day of year, holidays | 46% |
+| Station identity | 34% |
+| Closure history of the station (`cl_*`) | 16% |
+| Recent level of the station | 4% |
+
+**Challenge 166, XGBoost (main variant)**
+
+| Family | Share |
+|---|---|
+| Station identity and stop number (`gare`, `arret`) | 40% |
+| Day context (`gd_*`, `d_*`) | 18% |
+| Combinations of the past delays (means, min/max, differences) | 15% |
+| Service pattern (`m12`…`m30`) | 11% |
+| Train context (`tr_*`) | 6% |
+| The 6 past delays given by the challenge | 5% |
+| Position of the train within its day (`pos_day`) | 4% |
+| Calendar and weekday | < 1% |
+
+Taken one by one, the most important features after the station are the stop number,
+the stations served at stops 18 and 24, the position of the train within its day and the
+train context of `p2q0`. The 6 raw past delays have a small share because their
+combinations carry the same information in a more usable form.
 
 ## Repository layout
 
@@ -130,7 +182,9 @@ python 166_temps_attente/train_predict.py       # ~35 min on a GPU, writes 166_t
   time. The platform rules allow enriching the data, but the spirit of the task is
   debatable:
   - the 2023 strike calendar (149) was only known afterwards;
-  - the day and train contexts (166) include trains that ran later the same day.
+  - the day and train contexts (166) include trains that ran later the same day;
+  - the position of the train within its day (166) relies on how the organisers sorted
+    the files, not on a provided variable.
 - **Strike effects are not validated locally.** The 2022 validation period has no
   strikes, so their effect could only be checked on the leaderboard and with a backtest
   on the December 2019 strike.
@@ -138,5 +192,7 @@ python 166_temps_attente/train_predict.py       # ~35 min on a GPU, writes 166_t
   part of the test set and may rank differently.
 - **166 is not bit-for-bit reproducible.** The neural networks run on a GPU, so a rerun
   can differ from the submitted file on a few rows.
-- **149: the current script is v7**, which has not been scored yet. v6 (63.84) differs
-  only on strike days: `STRIKE_SHRINK = 5` and `STRIKE_EXTRA = 1.0`.
+- **166: the script produces v5**, which has not been scored yet. v4 (0.6264) has no
+  position feature and gives the two halves of the ensemble equal weight.
+- **149: the script reproduces v7** (63.16) exactly. v6 (63.84) differs only on strike
+  days: `STRIKE_SHRINK = 5` and `STRIKE_EXTRA = 1.0`.

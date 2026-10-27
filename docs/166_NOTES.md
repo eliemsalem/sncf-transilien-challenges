@@ -1,6 +1,6 @@
 # Notes — challenge n°166 (platform waiting time)
 
-Lab notebook of the project. Latest update: 2026-10-26.
+Lab notebook of the project. Latest update: 2026-10-27.
 
 ## Goal
 
@@ -52,6 +52,7 @@ like the test set.
 | + neural network + day context (v2) | 0.668 | 0.6407 (8th) |
 | + service pattern (v3) | 0.661 | 0.6299 (3rd) |
 | + calendar, train context, large ensemble of 33 models (v4) | not measured as a whole (components: 0.6599-0.6604) | **0.6264 (2nd)** |
+| + position of the train within its day, 60% XGBoost (v5) | 0.6559 (XGBoost + 3 networks) | not scored yet |
 
 **Service pattern**: for each row, the stations served by the same train at the other
 test stops (12, 18, 24, 30). This is timetable information, in the spirit of the
@@ -62,6 +63,13 @@ line H). It is computed at test density.
 the day, computed on the test rows (and, during training, at the same density). They
 include trains that ran later in the day, which is not available in real time. The
 **train context** (averages over the train's other stops) is in the same grey area.
+
+**Position of the train within its day (grey area)**: in both files, trains appear in
+roughly chronological order. The rank of the train within its day is a proxy for the time
+of day. The profile of |p0q2| by position quintile is the same in the training and test
+files (with a dip in the middle quintile), which suggests both files were sorted the same
+way. The row order does not leak the target: p2q0 of the next rows never copies y beyond
+chance. With 3 seeds, XGBoost improves from 0.6652 to 0.6591 (Oct.-Nov.).
 
 **Remaining error**: rows at ≤ -5 min (incidents, 1.2%) account for about 20% of the MAE,
 with an average error of about 11 minutes. Widening the classes down to -10 did not help:

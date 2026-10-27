@@ -20,7 +20,7 @@ varied by ±0.05 from one seed to another).
 v6: strike effect SPECIFIC TO EACH STATION (learned on 2016, 2018, 2019-2020), higher
 uncertainty on strike days, completed 2023 calendar, anchor per weekday (remote work).
 v7: per-station strike effect shrunk less (2 days instead of 5), extra 15% reduction on
-strike days.
+strike days (public score 63.16, from 63.84 for v6).
 
 Usage:
     python train_predict.py           # time-based validation + submission
@@ -61,9 +61,9 @@ STRIKE_WINDOWS = [("2016-03-09", "2016-06-30"), ("2018-03-22", "2018-06-28"),
 # Strike effect PER STATION and per intensity: median of log(y / usual level) over past
 # strikes, shrunk towards the network-wide effect (weight of 2 days).
 STRIKE_SHRINK = 2
-# v7: extra reduction on strike days. Going from v5 to v6 (strike-day predictions -17%)
-# gained 5.4 points on the leaderboard, and the backtest on the December 2019 strike also
-# shows that a stronger reduction pays off with the MAPE.
+# Extra reduction on strike days. Going from v5 to v6 (strike-day predictions -17%) gained
+# 5.4 points on the leaderboard, v7 (x0.85) gained 0.68 more, and the backtest on the
+# December 2019 strike also shows that a stronger reduction pays off with the MAPE.
 STRIKE_EXTRA = 0.85
 
 

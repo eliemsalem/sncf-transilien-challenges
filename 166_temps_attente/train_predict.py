@@ -8,7 +8,7 @@ time, for a train located two stations upstream. Metric: MAE. Public score: 0.62
 
 Approach: each model predicts the DISTRIBUTION of p0q0 over -5..+5 minutes; the
 distributions are averaged and we predict their MEDIAN (the value that minimises the
-absolute error). Final ensemble, half and half:
+absolute error). Final ensemble, 60% XGBoost / 40% neural networks:
   - multiclass XGBoost: 6 hyperparameter variants (3 seeds each) + 1 variant with the
     train context (3 seeds);
   - neural network (embeddings for station / stop / weekday / station×stop / service
@@ -20,6 +20,8 @@ Features, beyond the 6 past measurements p{i}q{j}:
   - service pattern: stations served by the train at its other test stops
     (timetable information, cf. Coulaud et al., WCRR 2022);
   - calendar: school holidays (zone C), public holidays, bridge days, eves of holidays;
+  - position of the train within its day, from the order of the rows in the files: a
+    proxy for the time of day (grey area: it relies on how the files were sorted);
   - day context (grey area, see docs/166_NOTES.md): averages of the measurements over
     the station-day and over the day; train context: averages over the train's other stops.
 Contexts are computed "at test density": on the training set, only from the rows at the
@@ -54,6 +56,8 @@ TEST_ARRETS = {12, 18, 24, 30, 36}
 MISSION_ARRETS = (12, 18, 24, 30)
 MISSION = [f"m{a}" for a in MISSION_ARRETS]
 CALENDAR = ["school_holiday", "public_holiday", "bridge_day", "holiday_eve"]
+POSITION = ["pos_day"]
+XGB_WEIGHT = 0.6                   # weight of the XGBoost half of the ensemble
 LO, HI = -5, 5
 CLASSES = np.arange(LO, HI + 1)
 HALF_LIFE = 60                     # days
@@ -61,9 +65,9 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # 2023 calendar, zone C (Île-de-France)
 SCHOOL_HOLIDAYS = [("2023-04-22", "2023-05-09"), ("2023-07-08", "2023-09-04"),
-            ("2023-10-21", "2023-11-06"), ("2023-12-23", "2024-01-08")]
+                   ("2023-10-21", "2023-11-06"), ("2023-12-23", "2024-01-08")]
 PUBLIC_HOLIDAYS = {"2023-04-10", "2023-05-01", "2023-05-08", "2023-05-18", "2023-05-29", "2023-07-14",
-          "2023-08-15", "2023-11-01", "2023-11-11", "2023-12-25"}
+                   "2023-08-15", "2023-11-01", "2023-11-11", "2023-12-25"}
 BRIDGE_DAYS = {"2023-05-19", "2023-08-14"}
 
 # XGBoost variants of the ensemble (3 seeds each); the train-context variant is added in ensemble_proba
@@ -94,6 +98,18 @@ def add_features(df, gares, ga_cats):
     df["qp"] = df.p0q2 * df.p2q0
     ga = df["gare"].astype(str) + "_" + df["arret"].astype(str)
     df["gare_arret"] = pd.Categorical(ga, categories=ga_cats)
+    return df
+
+
+def add_position(df):
+    """Position of the train within its day, from the order of the rows in the file (trains
+    appear in roughly chronological order): a proxy for the time of day, which the data
+    does not provide. Must be called on the file as loaded, before any reordering."""
+    pos = pd.Series(np.arange(len(df)), index=df.index)
+    first = pos.groupby([df["date"], df["train"]]).transform("min")
+    rank = first.groupby(df["date"]).rank(method="dense")
+    df = df.copy()
+    df["pos_day"] = (rank / rank.groupby(df["date"]).transform("max")).values
     return df
 
 
@@ -250,15 +266,15 @@ def nn_proba(tr, te, num, ref, seeds, epochs=12, lr=2e-3, bs=4096):
 
 # ---------------------------------------------------------------- ensemble
 def ensemble_proba(tr, te, ref):
-    feats = FEATURES + CTX + MISSION + CALENDAR
+    feats = FEATURES + CTX + MISSION + CALENDAR + POSITION
     xgb = [xgb_proba(tr, te, feats, ref, seeds, **kw) for kw, seeds in XGB_VARIANTS]
     xgb.append(xgb_proba(tr, te, feats + TRAIN_CTX, ref, (0, 1, 2)))
     print(f"  XGBoost: {len(xgb)} variants", flush=True)
-    num = [f for f in FEATURES if f not in ("gare", "arret", "wd")] + CALENDAR
+    num = [f for f in FEATURES if f not in ("gare", "arret", "wd")] + CALENDAR + POSITION
     nets = [nn_proba(tr, te, num, ref, (0, 1, 2)), nn_proba(tr, te, num, ref, (3, 4, 5)),
             nn_proba(tr, te, num + CTX, ref, (0, 1, 2)), nn_proba(tr, te, num + CTX + TRAIN_CTX, ref, (0, 1, 2))]
     print(f"  networks: {len(nets)} variants", flush=True)
-    return 0.5 * np.mean(xgb, axis=0) + 0.5 * np.mean(nets, axis=0)
+    return XGB_WEIGHT * np.mean(xgb, axis=0) + (1 - XGB_WEIGHT) * np.mean(nets, axis=0)
 
 
 def median(proba):
@@ -268,6 +284,7 @@ def median(proba):
 
 def main():
     X, T = load()
+    X, T = add_position(X), add_position(T)                # before any reordering
     gares = sorted(set(X.gare) | set(T.gare))
     ga_cats = sorted(set(X.gare + "_" + X.arret.astype(str)) | set(T.gare + "_" + T.arret.astype(str)))
     X, T = add_features(X, gares, ga_cats), add_features(T, gares, ga_cats)
