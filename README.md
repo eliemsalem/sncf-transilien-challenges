@@ -8,9 +8,9 @@ the [Challenge Data](https://challengedata.ens.fr) platform:
   63.16**, which is **1st** on the public leaderboard.
 - **n°166: platform waiting time.** Forecast, in real time, the error of the waiting
   time displayed on platform screens for a train two stations upstream (MAE). The public
-  score went from **0.6497 to 0.6050**, which is **2nd** on the public leaderboard.
+  score went from **0.6497 to 0.5914**, which is **1st** on the public leaderboard.
 
-Leaderboard positions as of 27 October 2026.
+Leaderboard positions as of 28 October 2026.
 
 ## Data
 
@@ -67,8 +67,10 @@ The same method was used for both challenges:
   - the **calendar**: school holidays, bridge days, eves of holidays;
   - the **day and train contexts**: averages of the measurements over the station-day
     and over the train's other stops;
-  - the **local context**: the measurements of the 1, 3 and 8 trains just before and
-    just after at the same station and day, and the time gaps to the nearest ones;
+  - the **local context**: the measurements of the 1 to 30 trains just before and just
+    after at the same station and day (also at the same station × stop and the same
+    station × service pattern), the share of them with a delay of -3 min or worse, and
+    the time gaps to the nearest ones;
   - the **position of the train within its day**, taken from the order of the rows in the
     files (trains appear in roughly chronological order). It is a proxy for the time of
     day, which the data does not provide.
@@ -104,7 +106,8 @@ LightGBM ensemble, removing counting outages, a COVID flag, lag features.
 | v3 | + service pattern | 0.661 | 0.6299 |
 | v4 | + calendar, train context, ensemble of 33 models | not measured as a whole* | 0.6264 |
 | v5 | + position of the train within its day, 60% weight on XGBoost | 0.6559 (XGBoost + 3 networks) | 0.6260 |
-| v6 | + local context: trains just before and after at the same station | 0.6355 | **0.6050** |
+| v6 | + local context: trains just before and after at the same station | 0.6355 | 0.6050 |
+| v7 | + more local measurements (incident share, `p0q4`, `p3q0`, `p4q0`), neighbours at the same stop and with the same service pattern, wider windows | 0.6219 | **0.5914** |
 
 \* The components of v4 score 0.6599-0.6604 in validation. The full ensemble was not
 re-validated before submission.
@@ -179,8 +182,8 @@ becomes almost useless (0.040 → 0.003) once the service pattern is known. The 
 rely twice as much on the day context as XGBoost does, which is why blending them helps.
 The error breakdown of v5 pointed to the next step: within a station and a day, the
 error of a train is correlated with that of the trains just before and after (0.28),
-which the day-wide averages missed. This local context (v6) brought the largest gain
-since v2.
+which the day-wide averages missed. This local context (v6, then extended in v7) brought
+the largest gains since v2: 0.6260 → 0.6050 → 0.5914.
 
 ## Repository layout
 
@@ -218,7 +221,7 @@ python 166_temps_attente/train_predict.py       # ~35 min on a GPU, writes 166_t
   part of the test set and may rank differently.
 - **166 is not bit-for-bit reproducible.** The neural networks run on a GPU, so a rerun
   can differ from the submitted file on a few rows.
-- **166: the script produces v6** (0.6050). The gain of v5 over v4 was small (0.6264 →
+- **166: the script produces v7** (0.5914). The gain of v5 over v4 was small (0.6264 →
   0.6260, whereas the validation predicted about 0.622): the position feature helped
   less on the test period than on the validation period.
 - **149: the script reproduces v7** (63.16) exactly. v6 (63.84) differs only on strike

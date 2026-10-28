@@ -53,7 +53,8 @@ like the test set.
 | + service pattern (v3) | 0.661 | 0.6299 (3rd) |
 | + calendar, train context, large ensemble of 33 models (v4) | not measured as a whole (components: 0.6599-0.6604) | 0.6264 (2nd) |
 | + position of the train within its day, 60% XGBoost (v5) | 0.6559 (XGBoost + 3 networks) | 0.6260 (2nd) |
-| + local context: trains just before and after at the same station (v6) | **0.6355** | **0.6050** |
+| + local context: trains just before and after at the same station (v6) | 0.6355 | 0.6050 |
+| + extended local context (v7) | **0.6219** | **0.5914 (1st)** |
 
 **Service pattern**: for each row, the stations served by the same train at the other
 test stops (12, 18, 24, 30). This is timetable information, in the spirit of the
@@ -82,6 +83,14 @@ train (0.28). Leak check: `p2q0` of the following trains equals y no more often 
 chance (27.4% vs 27.4%). Single XGBoost, 2 seeds: 0.6647 → 0.6470 with `p0q2`/|`p0q2`|
 only, 0.6392 with all four measurements. Full ensemble: 0.6355 in validation, 0.6050 public
 (ratio 0.952, in line with earlier versions).
+
+**Extended local context (v7)**: five groups of local features. Single XGBoost, 2 seeds,
+validation MAE: v6 0.6392; + `p0q4`/`p3q0`/`p4q0` and the share of neighbours with
+`p0q2` or `p2q0` ≤ -3 min (incidents) 0.6305; + neighbours with the same service pattern
+(stations served at 18 and 24) 0.6299; + neighbours at the same station × stop 0.6272;
++ wider windows (2, 5, 15, 30 trains) 0.6268. Wider windows alone (0.6481) and same-stop
+neighbours alone (0.6425) are worse than v6, but help in combination. Full ensemble:
+0.6219 in validation, 0.5914 public (ratio 0.951).
 
 **Error breakdown of v5 (validation)**: rows at ≤ -6 min are 0.8% of the rows and 17% of
 the error; station ZFB is 8% of the rows and 16% of the error, with a MAE (1.28) barely
